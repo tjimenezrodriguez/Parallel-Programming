@@ -63,7 +63,7 @@ def encolar_lista(lista: list, q: Queue) -> Queue:
 
 # Generamos una función auxiliar para poder usar centinelas
 
-def colocar_nones(q: Queue, nr_procesos: int) -> None:
+def colocar_nones(q: Queue, nr_procesos: int) -> Queue:
     for _ in range(nr_procesos):
         q.put(None)
 
