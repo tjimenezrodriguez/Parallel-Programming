@@ -2,9 +2,6 @@
 Programación Paralela
 
 Práctica 1: Búsqueda en paralelo
-
-Integrantes: Álex Carrillo Delgado, Alonso Delgado Morales, Teófilo Jiménez Rodríguez.
-
 """
 import time
 # caso avanzado
