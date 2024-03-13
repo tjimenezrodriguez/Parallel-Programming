@@ -3,30 +3,29 @@ Programación Paralela
 
 Práctica 1: Búsqueda en paralelo
 """
-import time
+
 # caso avanzado
 
-from multiprocessing import Queue, Process
+from multiprocessing import Queue, Process, Event
 
-from time import perf_counter
 import math
 
 import os
 
 dir = os.getcwd()   # Obtengo la ruta actual
 
-#OBS: estoy presuponiendo que las pruebas se encuentran en la misma carpeta que este archivo.py
+# OBS: estoy presuponiendo que las pruebas se encuentran en la misma carpeta que este archivo.py
 
 
 # CONDICIONES USADAS (deberán ser cambiadas a gusto del usuario).
 
 # La estructura SIEMPRE deberá ser la de una función: str -> bool.
-#OBS: esto permitiría establecer condiciones más generales, no necesariamente para números.
+# OBS: esto permitiría establecer condiciones más generales, no necesariamente para números.
 
 
-def es_primo(num_str: str)-> bool:   # f1: primera condición
+def es_primo(num_str: str) -> bool:   # f1: primera condición
     
-    numero = int (num_str)
+    numero = int(num_str)
     
     if numero < 2:
         
@@ -40,7 +39,7 @@ def es_primo(num_str: str)-> bool:   # f1: primera condición
         
     return True
 
-def termina_227(num_str: str)-> bool:   # f2: segunda condición
+def termina_227(num_str: str) -> bool:   # f2: segunda condición
     
     return num_str.endswith('227')
 
@@ -58,7 +57,9 @@ funciones = [es_primo, termina_227]
 
 # Coloca los elementos de una lista en una cola.
 def encolar_lista(lista: list, q: Queue) -> Queue:
+
     for x in lista:
+
         q.put(x)
 
     return q
@@ -66,8 +67,10 @@ def encolar_lista(lista: list, q: Queue) -> Queue:
 
 # Generamos una función auxiliar para poder usar centinelas
 
-def colocar_nones(q: Queue, nr_procesos: int) -> None:
+def colocar_nones(q: Queue, nr_procesos: int) -> Queue:
+
     for _ in range(nr_procesos):
+
         q.put(None)
 
     return q
@@ -80,12 +83,23 @@ def creacion_cola_arch(nr_proc:int, archs: list) -> Queue:
     c_arch = colocar_nones(pre_cola_arch, nr_proc)
 
     return c_arch
-def creacion_cola_coin(nr_req:int) -> Queue:
 
-    q = Queue()
-    c_coin = colocar_nones(q,nr_req)
+def leer_archivo(nombre_arch: str) -> list:
 
-    return c_coin
+    l_arch = []
+
+    archivo = open(nombre_arch, "r")
+
+    for line in archivo:
+
+        for num_str in line.split():
+
+            l_arch.append(num_str)
+
+    archivo.close()
+
+    return l_arch
+
 ####### CONTROL DE CONDICIONES
 
 # Comprueba si un string dado cumple todas las condiciones, dadas como una lista de funciones.
@@ -99,47 +113,29 @@ def cumple_conds(num_str: str, funciones) -> bool:
 
 # A diferencia del caso básico, sólo lee archivos y busca strs que cumplan las condiciones.
 # Usamos centinelas para evitar problemas con la concurrencia.
-def buscador(cola_arch: Queue, cola_coin: Queue, conds: list[callable]) -> Queue:
-
+def buscador(cola_arch: Queue, cola_coin: Queue, parada: Event, conds: list[callable]):
 
     nombre = cola_arch.get()
 
     while nombre is not None:
 
-        archivo = open(nombre, "r")
+        l_archivo = leer_archivo(nombre)
+        n = len(l_archivo)
+        i= 0
 
-        for line in archivo :
+        while i<n and not parada.is_set():
 
-            for num_str in line.split():
+            num = l_archivo[i]
 
-                if cumple_conds(num_str, conds):
+            if cumple_conds(num, conds):
 
-                    marca = cola_coin.get()  # veo mi marcador de cola.coin
+                cola_coin.put(int(num))
 
-                    if marca is None:
+            i += 1
 
-                        cola_coin.put(int(num_str))
-                        print(num_str)
-
-                    else:
-
-                        cola_coin.put(marca)      # lo devuelvo a la cola y termino; ya tengo lo que buscaba
-
-                        return cola_coin
-
-        archivo.close()
         nombre = cola_arch.get()
 
-    return cola_coin
-
 ####### DEVOLUCIÓN DE RESULTADOS
-
-def limpiar_cola(c: Queue, nr_nones):
-    e = c.get()
-    while e is None:
-        e = c.get()
-    c.put(e)  # añado el último de vuelta
-    return c
 
 def de_cola_a_lista(c: Queue) -> [int]:  # función auxiliar que trata la cola de resultados
     # Como no influye en la paralelización, podemos usar empty sin problemas.
@@ -156,9 +152,13 @@ def de_cola_a_lista(c: Queue) -> [int]:  # función auxiliar que trata la cola d
 #OBS: lo hago mediante print pero podría hacerse de otro modo, al tenerlo en una función independiente.  
      
 def resultados(lista: [int], nr_datos: int):
+
     if len(lista) < nr_datos:
+
         print(f'No se ha encontrado la cantidad de números que cumplen la condición requerida. Se pedían {nr_datos}. Se han encontrado {len(lista)}.')
+
     else:
+
         print(f'Se han encontrado al menos {len(lista)} números que cumplen la condición. Los primeros de ellos son:')
         print(lista)
         
@@ -169,6 +169,7 @@ if __name__ == "__main__":
 
     # Lista de archivos .txt usando comprensión de listas y la ubicación dir
     archivos = [archivo for archivo in os.listdir(dir) if not archivo.endswith('.py')]
+    # Como convención, leo todos los archivos del directorio salvo los .py
     
     nr_archivos = len(archivos)
     
@@ -178,32 +179,46 @@ if __name__ == "__main__":
     
     nr_procesos = min (math.floor(math.sqrt(nr_archivos)), 7)
 
-    nr_datos_requeridos = 1_000_000 # condiciónn modificable por el usuario
+    nr_datos_requeridos = 4 # condición modificable por el usuario
 
     cola_arch = creacion_cola_arch(nr_procesos,archivos)
-
-    cola_coin = creacion_cola_coin(nr_datos_requeridos)
+    cola_coin = Queue()
+    cola_res = Queue()
+    parada = Event()
 
     pr_buscadores = []
         
     for _ in range(nr_procesos):
         
-        p = Process(target=buscador, args=(cola_arch, cola_coin, funciones))
+        p = Process(target=buscador, args=(cola_arch, cola_coin, parada, funciones))
         # OBS: estoy dando como argumento la lista de funciones(condiciones) que debe ser establecida por el usuario
         # al comienzo del código.
         pr_buscadores.append(p)
         p.start()
-    
+
+    c=0
+
+    while any(proceso.is_alive() for proceso in pr_buscadores) and c!=nr_datos_requeridos:
+
+        try:
+
+            dato = cola_coin.get(timeout=0.01)
+            cola_res.put(dato)
+            c +=1
+
+        except:
+
+            continue
+
+    parada.set()  # Si salgo, marco que ya pueden parar los buscadores
+
     for pr in pr_buscadores:
-    
+
         pr.join()
 
-    # Quito los Nones en el caso de que quedara alguno:
-    cola_coin_limpia = limpiar_cola(cola_coin,nr_datos_requeridos)
-    lfinal = de_cola_a_lista(cola_coin_limpia)
+    lfinal = de_cola_a_lista(cola_res)
     
     resultados(lfinal, nr_datos_requeridos)  # llamo a mi función dedicada a los resultados
-
 
 
 
